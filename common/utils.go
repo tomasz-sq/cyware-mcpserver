@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -71,11 +72,30 @@ func ExtractParams(request mcp.CallToolRequest, params_list []string) map[string
 	}
 
 	for _, v := range params_list {
-		if _, ok := mp[v]; ok {
-			params[v] = mp[v].(string)
+		if val, ok := mp[v]; ok {
+			params[v] = anyToString(val)
 		}
 	}
 	return params
+}
+
+// anyToString coerces a JSON-decoded value to a string. JSON numbers decode to
+// float64, so callers that pass numeric params (e.g. {"page": 1}) must not be
+// assumed to be strings — an unchecked type assertion panics the tool handler.
+func anyToString(val any) string {
+	switch t := val.(type) {
+	case string:
+		return t
+	case float64:
+		// Render integral values without a trailing ".0" (page=1 -> "1").
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(t)
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", t)
+	}
 }
 
 func GetRestyClient(retryHook func(r *resty.Response, err error)) *resty.Client {
