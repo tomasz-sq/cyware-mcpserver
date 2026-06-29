@@ -2,8 +2,10 @@ package ctix
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cyware-labs/cyware-mcpserver/applications/ctix/helpers"
 	"github.com/cyware-labs/cyware-mcpserver/common"
@@ -42,6 +44,10 @@ func CQLCTIXSearchGrammarTool(s *server.MCPServer) {
 }
 
 func GetCQLQuerySearchResult(sort string, query string, page string, page_size string) (*common.APIResponse, error) {
+	return GetCQLQuerySearchResultWithContext(context.Background(), sort, query, page, page_size)
+}
+
+func GetCQLQuerySearchResultWithContext(ctx context.Context, sort string, query string, page string, page_size string) (*common.APIResponse, error) {
 	query = strings.ReplaceAll(query, "\"", "\\\"")
 	payload := strings.NewReader(fmt.Sprintf(`{"query": "%s"}`, query))
 
@@ -53,7 +59,7 @@ func GetCQLQuerySearchResult(sort string, query string, page string, page_size s
 
 	threat_data_list_resp := ThreatDataListResp{}
 
-	resp, err := CTIX_CLIENT.MakeRequest("POST", threat_data_list, params, &threat_data_list_resp, payload, nil)
+	resp, err := CTIX_CLIENT.MakeRequestWithContext(ctx, "POST", threat_data_list, params, &threat_data_list_resp, payload, nil)
 
 	return &common.APIResponse{
 		FilteredReponse: common.JsonifyResponse(threat_data_list_resp),
@@ -81,6 +87,9 @@ func GetCQLQuerySearchResultTool(s *server.MCPServer) {
 			mcp.Description(`This is 'sort' params used to get the result in either descending/ascending order based on the value. Supported values are: confidence_score, ctix_modified, ctix_created only. Pass the value prefixed with '-' for descending order or as it for ascending order.
 			If nothing is specified then pass "-ctix_modified"`),
 		),
+		mcp.WithNumber("timeout_seconds",
+			mcp.Description("Optional timeout in seconds for the CQL query search request"),
+		),
 	)
 
 	s.AddTool(getCQLQuerySearchResultTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -89,7 +98,53 @@ func GetCQLQuerySearchResultTool(s *server.MCPServer) {
 		page_size := request.Params.Arguments["page_size"].(string)
 		sort := request.Params.Arguments["sort"].(string)
 
-		resp, err := GetCQLQuerySearchResult(sort, query, page, page_size)
+		if timeoutArg, ok := request.Params.Arguments["timeout_seconds"]; ok {
+			var timeoutSeconds float64
+			switch v := timeoutArg.(type) {
+			case float64:
+				timeoutSeconds = v
+			case float32:
+				timeoutSeconds = float64(v)
+			case int:
+				timeoutSeconds = float64(v)
+			case int8:
+				timeoutSeconds = float64(v)
+			case int16:
+				timeoutSeconds = float64(v)
+			case int32:
+				timeoutSeconds = float64(v)
+			case int64:
+				timeoutSeconds = float64(v)
+			case uint:
+				timeoutSeconds = float64(v)
+			case uint8:
+				timeoutSeconds = float64(v)
+			case uint16:
+				timeoutSeconds = float64(v)
+			case uint32:
+				timeoutSeconds = float64(v)
+			case uint64:
+				timeoutSeconds = float64(v)
+			case json.Number:
+				parsedTimeoutSeconds, err := v.Float64()
+				if err != nil {
+					return nil, fmt.Errorf("timeout_seconds must be a number")
+				}
+				timeoutSeconds = parsedTimeoutSeconds
+			default:
+				return nil, fmt.Errorf("timeout_seconds must be a number")
+			}
+
+			if timeoutSeconds <= 0 {
+				return nil, fmt.Errorf("timeout_seconds must be greater than 0")
+			}
+
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, time.Duration(timeoutSeconds*float64(time.Second)))
+			defer cancel()
+		}
+
+		resp, err := GetCQLQuerySearchResultWithContext(ctx, sort, query, page, page_size)
 
 		return common.MCPToolResponse(resp, []int{200}, err)
 	})
