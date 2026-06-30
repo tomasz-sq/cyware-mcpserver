@@ -20,6 +20,12 @@ func JsonifyResponse(obj any) any {
 
 func MCPToolResponse(resp *APIResponse, expected_status_code []int, err error) (*mcp.CallToolResult, error) {
 	if err != nil || (resp.RawResponse != nil && !ContainsStatusCode(expected_status_code, resp.RawResponse.StatusCode())) {
+		// resp.RawResponse is nil when the request failed before any response
+		// was received (e.g. timeout / connection reset). Dereferencing it here
+		// would panic the tool handler, so report the transport error instead.
+		if resp.RawResponse == nil {
+			return mcp.NewToolResultText(fmt.Sprintf("An error occurred before a response was received: %v", err)), err
+		}
 		return mcp.NewToolResultText(fmt.Sprintf("An error occurred, Server responded with status code %v and response %v", resp.RawResponse.StatusCode(), resp.RawResponse.String())), err
 	}
 	return mcp.NewToolResultText(fmt.Sprintf("%v", resp.FilteredReponse)), nil
