@@ -2,10 +2,8 @@ package ctix
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/cyware-labs/cyware-mcpserver/applications/ctix/helpers"
 	"github.com/cyware-labs/cyware-mcpserver/common"
@@ -99,48 +97,13 @@ func GetCQLQuerySearchResultTool(s *server.MCPServer) {
 		sort := request.Params.Arguments["sort"].(string)
 
 		if timeoutArg, ok := request.Params.Arguments["timeout_seconds"]; ok {
-			var timeoutSeconds float64
-			switch v := timeoutArg.(type) {
-			case float64:
-				timeoutSeconds = v
-			case float32:
-				timeoutSeconds = float64(v)
-			case int:
-				timeoutSeconds = float64(v)
-			case int8:
-				timeoutSeconds = float64(v)
-			case int16:
-				timeoutSeconds = float64(v)
-			case int32:
-				timeoutSeconds = float64(v)
-			case int64:
-				timeoutSeconds = float64(v)
-			case uint:
-				timeoutSeconds = float64(v)
-			case uint8:
-				timeoutSeconds = float64(v)
-			case uint16:
-				timeoutSeconds = float64(v)
-			case uint32:
-				timeoutSeconds = float64(v)
-			case uint64:
-				timeoutSeconds = float64(v)
-			case json.Number:
-				parsedTimeoutSeconds, err := v.Float64()
-				if err != nil {
-					return nil, fmt.Errorf("timeout_seconds must be a number")
-				}
-				timeoutSeconds = parsedTimeoutSeconds
-			default:
-				return nil, fmt.Errorf("timeout_seconds must be a number")
-			}
-
-			if timeoutSeconds <= 0 {
-				return nil, fmt.Errorf("timeout_seconds must be greater than 0")
+			timeoutDuration, err := common.ParseTimeoutDuration(timeoutArg)
+			if err != nil {
+				return nil, err
 			}
 
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, time.Duration(timeoutSeconds*float64(time.Second)))
+			ctx, cancel = context.WithTimeout(ctx, timeoutDuration)
 			defer cancel()
 		}
 
